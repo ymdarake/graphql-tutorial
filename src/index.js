@@ -1,66 +1,49 @@
 const { GraphQLServer } = require('graphql-yoga')
+const { Prisma } = require('prisma-binding')
 
-let links = [{
-  id: 'link-0',
-  url: 'www.howtographql.com',
-  description: 'Fullstack tutorial for GraphQL'
-}]
 
-let idCount = links.length
 const resolvers = {
   Query: {
     info: () => `This is the API of a Hackernews Clone`,
-    feed: () => links,
-    link: (_, { id }) => links.find(l => l.id === id)
+    /**
+     * @param context {object} object that every resolver in the resolver chain can read from and write to.
+     * @param info {object} object that carries information about the incoming GraphQL query (in the form of a query AST).
+     * 
+     * here, info is a selectionSet such as 
+     * `{
+     *    id
+     *    description
+     *    url
+     * }`
+     */
+    feed: (root, args, context, info) => {
+      return context.db.query.links({}, info)
+    },
   },
   Mutation: {
-    post: (root, { description, url }) => {
-      const link = {
-        id: `link-${idCount++}`,
-        description,
-        url
-      }
-      links.push(link)
-      return link
+    post: (root, args, context, info) => {
+      return context.db.mutation.createLink({
+        data: {
+          url: args.url,
+          description: args.description,
+        },
+      }, info)
     },
-    updateLink: (root, { id, url, description }) => {
-      let updatedLink = null
-      links.some(l => {
-        if (l.id === id) {
-          if (url) {
-            l.url = url
-          }
-          if (description) {
-            l.description = description
-          }
-          updatedLink = l
-          return true
-        }
-      })
-      return updatedLink
-    },
-    deleteLink: (root, { id }) => {
-      let deletedLink = null
-      links.some(l => {
-        if (l.id === id) {
-          deletedLink = Object.assign({}, l)
-          delete links[links.indexOf(l)]
-          return true
-        }
-      })
-      return deletedLink
-    }
-  }
-	// We can omit this resolvers since the server knows them thanks to the schema.
-  // Link: {
-  //   id: (root) => root.id,
-  //   description: (root) => root.description,
-  //   url: (root) => root.url,
-  // }
+  },
 }
 
 const server = new GraphQLServer({
 	typeDefs: './src/schema.graphql',
-	resolvers
+  resolvers,
+  context: req => ({
+    ...req,
+    db: new Prisma({
+      typeDefs: 'src/generated/prisma.graphql',
+      //TODO: use .env in the same way as database/prisma.yml
+      endpoint: 'https://us1.prisma.sh/ym-darake-bc1db0/database/dev',
+      secret: 'mysecret123',
+      debug: true,
+    }),
+  }),
 })
 server.start(() => console.log(`Server is running on http://localhost:4000`))
